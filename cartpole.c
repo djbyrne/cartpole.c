@@ -1,11 +1,11 @@
-// cartpole.c
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include "cartpole.h"
 
 // No includes of agent.h or references to agent_policy
+
+#define MAX_STEPS 500 // Maximum steps per episode
 
 void initialize(CartPoleEnv *env) {
     // Seed the random number generator
@@ -22,6 +22,7 @@ void initialize(CartPoleEnv *env) {
     env->tau = 0.02; // Time interval for updates
     env->theta_threshold_radians = 12 * 2 * M_PI / 360;
     env->x_threshold = 2.4;
+    env->max_steps = MAX_STEPS; // Maximum number of steps
 
     // Reset the environment state
     reset(env);
@@ -35,13 +36,17 @@ void reset(CartPoleEnv *env) {
     env->theta_dot = ((double)rand() / RAND_MAX) * 0.1 - 0.05;
 
     env->steps_beyond_terminated = -1;
+    env->current_step = 0; // Reset step counter
 }
 
-int step(CartPoleEnv *env, int action, double *reward) {
+StepResult step(CartPoleEnv *env, int action) {
+    StepResult result;
+    
     // Validate action
     if (action != 0 && action != 1) {
         printf("Invalid action: %d\n", action);
-        return -1;
+        result.terminated = -1;
+        return result;
     }
 
     // Unpack state variables
@@ -72,26 +77,42 @@ int step(CartPoleEnv *env, int action, double *reward) {
     env->theta = theta;
     env->theta_dot = theta_dot;
 
+    // Increment step count
+    env->current_step++;
+
     // Check if terminated
     int terminated = x < -env->x_threshold || x > env->x_threshold ||
                      theta < -env->theta_threshold_radians || theta > env->theta_threshold_radians;
 
+    // Check if truncated (max steps reached)
+    int truncated = env->current_step >= env->max_steps;
+
     // Set reward
-    if (!terminated) {
-        *reward = 1.0;
-    } else if (env->steps_beyond_terminated == -1) {
+    if (!terminated && !truncated) {
+        result.reward = 1.0;
+    } else if (terminated && env->steps_beyond_terminated == -1) {
         // Pole just fell
         env->steps_beyond_terminated = 0;
-        *reward = 1.0;
+        result.reward = 1.0;
     } else {
         if (env->steps_beyond_terminated == 0) {
             printf("Warning: Step called after termination. Reset environment.\n");
         }
         env->steps_beyond_terminated++;
-        *reward = 0.0;
+        result.reward = 0.0;
     }
 
-    return terminated;
+    // Populate StepResult struct
+    result.observation[0] = env->x;
+    result.observation[1] = env->x_dot;
+    result.observation[2] = env->theta;
+    result.observation[3] = env->theta_dot;
+    result.terminated = terminated;
+    result.truncated = truncated;
+    //add info dictionary here, cant be NULL
+    result.info = 
+
+    return result;
 }
 
 // Main function

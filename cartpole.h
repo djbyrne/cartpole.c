@@ -1,7 +1,7 @@
-// cartpole.h
-
 #ifndef CARTPOLE_H
 #define CARTPOLE_H
+
+#define OBSERVATION_SIZE 4
 
 typedef struct {
     // Environment parameters
@@ -15,6 +15,7 @@ typedef struct {
     double tau; // Time interval for updates
     double theta_threshold_radians;
     double x_threshold;
+    int max_steps;
 
     // State variables
     double x;         // Cart position
@@ -24,11 +25,20 @@ typedef struct {
 
     // Other variables
     int steps_beyond_terminated;
+    int current_step;
 } CartPoleEnv;
+
+typedef struct {
+    double observation[OBSERVATION_SIZE]; // Observation [x, x_dot, theta, theta_dot]
+    double reward;                        // Reward value
+    int terminated;                       // Terminated flag
+    int truncated;                        // Truncated flag
+    void *info;                           // Optional info dictionary
+} StepResult;
 
 // Function declarations
 void initialize(CartPoleEnv *env);
 void reset(CartPoleEnv *env);
-int step(CartPoleEnv *env, int action, double *reward);
+StepResult step(CartPoleEnv *env, int action);
 
 #endif

@@ -31,14 +31,20 @@ static PyObject *PyCartPole_step(PyCartPoleObject *self, PyObject *args) {
         return NULL;
     }
 
-    double reward = 0.0;
-    int done = step(&self->env, action, &reward);
+    StepResult result = step(&self->env, action);
 
-    // Return a tuple: (state, reward, done)
-    PyObject *state = Py_BuildValue("(dddd)", self->env.x, self->env.x_dot, self->env.theta, self->env.theta_dot);
-    PyObject *result = Py_BuildValue("(OdO)", state, reward, PyBool_FromLong(done));
+    // Create Python dictionary for info; set to an empty dict if info is NULL
+    PyObject *info = result.info ? PyDict_New() : PyDict_New();  // Create an empty dictionary for info
+
+    // Return a tuple: (state, reward, terminated, truncated, info)
+    PyObject *state = Py_BuildValue("(dddd)", result.observation[0], result.observation[1], result.observation[2], result.observation[3]);
+    PyObject *py_result = Py_BuildValue("(OdOOO)", state, result.reward, PyBool_FromLong(result.terminated), PyBool_FromLong(result.truncated), info);
+    
+    // Clean up references to prevent memory leaks
     Py_DECREF(state);
-    return result;
+    Py_DECREF(info);
+
+    return py_result;
 }
 
 static PyMethodDef PyCartPole_methods[] = {
