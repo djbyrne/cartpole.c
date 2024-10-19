@@ -50,6 +50,8 @@ for _ in range(num_episodes):
     env.reset()
 ```
 
+Additionally, there is an example [notebook](notebooks/ppo.ipynb). using the environment to train a full PPO agent using the excellent single file implementation from [CleanRL](https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/ppo.py). This example is still limited as it is using the Gym Vectorised environment wrapper instead of handling the parallelisation on the C side. However, it shows a nice example of using it in practice. 
+
 # Performance
 The performance of this implementation is significantly faster than the standard Gymnasium environment. This is of course due to the fact that the Gymnasium environment is written in Python, and this implementation is written in pure C. As you can see from the comparison below, the C implementation is over 12x faster than the Python implementation. 
 
@@ -57,3 +59,6 @@ The performance of this implementation is significantly faster than the standard
 
 You can play with a simple random agent using the code above and comparing it to the standard Python environment for yourself in the [benchmarking notebook](notebooks/benchmarking.ipynb).
 
+# References
+- [Cartpole Environment](https://gym.openai.com/envs/CartPole-v1/)
+- [CleanRL PPO](https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/ppo.py)
