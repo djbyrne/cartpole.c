@@ -5,5 +5,10 @@ build_c:
 build_py:
 	python setup.py build
 
+clean:
+	python setup.py clean
+
 install:
 	python setup.py install
+
+build: build_c build_py install

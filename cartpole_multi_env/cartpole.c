@@ -90,3 +90,40 @@ int step(CartPoleEnv *env, int action, double *reward) {
 
     return terminated;
 }
+
+void initialize_envs(CartPoleEnvBatch *batch, int num_envs) {
+    if (num_envs > MAX_ENVIRONMENTS) {
+        num_envs = MAX_ENVIRONMENTS;
+    }
+    batch->num_envs = num_envs;
+    batch->envs = (CartPoleEnv *)malloc(sizeof(CartPoleEnv) * num_envs);
+    for (int i = 0; i < num_envs; i++) {
+        initialize(&batch->envs[i]);
+    }
+}
+
+void reset_envs(CartPoleEnvBatch *batch, int *reset_indices, int num_resets) {
+    for (int i = 0; i < num_resets; i++) {
+        int idx = reset_indices[i];
+        if (idx >= 0 && idx < batch->num_envs) {
+            reset(&batch->envs[idx]);
+        }
+    }
+}
+
+
+void step_envs(CartPoleEnvBatch *batch, int *actions, double *rewards, int *dones) {
+    for (int i = 0; i < batch->num_envs; i++) {
+        double reward = 0.0;
+        int done = step(&batch->envs[i], actions[i], &reward);
+        rewards[i] = reward;
+        dones[i] = done;
+    }
+}
+
+void free_envs(CartPoleEnvBatch *batch) {
+    if (batch->envs != NULL) {
+        free(batch->envs);
+        batch->envs = NULL;
+    }
+}
