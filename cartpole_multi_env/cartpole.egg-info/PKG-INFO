@@ -1,4 +1,0 @@
-Metadata-Version: 2.1
-Name: cartpole
-Version: 1.0
-Summary: CartPole environment with OpenMP support

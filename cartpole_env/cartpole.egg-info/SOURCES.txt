@@ -1,7 +1,0 @@
-cartpole.c
-cartpole_module.c
-setup.py
-cartpole.egg-info/PKG-INFO
-cartpole.egg-info/SOURCES.txt
-cartpole.egg-info/dependency_links.txt
-cartpole.egg-info/top_level.txt

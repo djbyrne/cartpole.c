@@ -8,6 +8,9 @@
 // No includes of agent.h or references to agent_policy
 
 void initialize(CartPoleEnv *env) {
+    // Seed the random number generator
+    srand(42);
+
     // Environment parameters
     env->gravity = 9.8;
     env->mass_cart = 1.0;
