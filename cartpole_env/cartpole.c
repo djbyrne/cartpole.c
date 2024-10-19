@@ -4,9 +4,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include "cartpole.h"
-#include <time.h>
-// In main()
 
+// No includes of agent.h or references to agent_policy
 
 void initialize(CartPoleEnv *env) {
     // Environment parameters
@@ -55,7 +54,7 @@ int step(CartPoleEnv *env, int action, double *reward) {
 
     // Compute acceleration
     double temp = (force + env->polemass_length * theta_dot * theta_dot * sintheta) / env->total_mass;
-    double thetaacc = (env->gravity * sintheta - costheta * temp) / 
+    double thetaacc = (env->gravity * sintheta - costheta * temp) /
                       (env->length * (4.0 / 3.0 - env->mass_pole * costheta * costheta / env->total_mass));
     double xacc = temp - env->polemass_length * thetaacc * costheta / env->total_mass;
 
@@ -90,26 +89,4 @@ int step(CartPoleEnv *env, int action, double *reward) {
     }
 
     return terminated;
-}
-
-int main() {
-    CartPoleEnv env;
-    initialize(&env);
-
-    // seed random number generator
-    srand(42);
-
-    int done = 0;
-    double reward = 0.0;
-    int time_steps = 0;
-
-    while (!done && time_steps < 500) {
-        // For simplicity, take random actions
-        int action = rand() % 2; // 0 or 1
-        done = step(&env, action, &reward);
-        printf("Time Step: %d, Reward: %.2f, Done: %d\n", time_steps, reward, done);
-        time_steps++;
-    }
-
-    return 0;
 }
