@@ -3,7 +3,7 @@
 #ifndef CARTPOLE_H
 #define CARTPOLE_H
 
-#define MAX_ENVIRONMENTS 1024  // Define a reasonable maximum
+#include <stddef.h>
 
 typedef struct {
     // Environment parameters
@@ -18,31 +18,21 @@ typedef struct {
     double theta_threshold_radians;
     double x_threshold;
 
-    // State variables
-    double x;         // Cart position
-    double x_dot;     // Cart velocity
-    double theta;     // Pole angle
-    double theta_dot; // Pole angular velocity
+    // State variables (arrays)
+    size_t num_envs;     // Number of environments
+    double *x;           // Cart positions
+    double *x_dot;       // Cart velocities
+    double *theta;       // Pole angles
+    double *theta_dot;   // Pole angular velocities
 
-    // Other variables
-    int steps_beyond_terminated;
-} CartPoleEnv;
-
-typedef struct {
-    CartPoleEnv *envs;
-    int num_envs;
+    // Done flags
+    int *done;           // Flags indicating if an environment is done
 } CartPoleEnvBatch;
 
 // Function declarations
-void initialize(CartPoleEnv *env);
-void reset(CartPoleEnv *env);
-int step(CartPoleEnv *env, int action, double *reward);
-
-// Batch functions declarations
-// Function declarations
-void initialize_envs(CartPoleEnvBatch *batch, int num_envs);
-void reset_envs(CartPoleEnvBatch *batch, int *reset_indices, int num_resets);
-void step_envs(CartPoleEnvBatch *batch, int *actions, double *rewards, int *dones);
-void free_envs(CartPoleEnvBatch *batch);
+CartPoleEnvBatch* create_env_batch(size_t num_envs);
+void free_env_batch(CartPoleEnvBatch *batch);
+void reset_env_batch(CartPoleEnvBatch *batch);
+void step_env_batch(CartPoleEnvBatch *batch, int *actions, double *rewards);
 
 #endif

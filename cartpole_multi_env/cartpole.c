@@ -1,129 +1,123 @@
 // cartpole.c
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
 #include "cartpole.h"
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <omp.h>
 
-// No includes of agent.h or references to agent_policy
-
-void initialize(CartPoleEnv *env) {
-    // Environment parameters
-    env->gravity = 9.8;
-    env->mass_cart = 1.0;
-    env->mass_pole = 0.1;
-    env->total_mass = env->mass_pole + env->mass_cart;
-    env->length = 0.5; // Half the pole's length
-    env->polemass_length = env->mass_pole * env->length;
-    env->force_mag = 10.0;
-    env->tau = 0.02; // Time interval for updates
-    env->theta_threshold_radians = 12 * 2 * M_PI / 360;
-    env->x_threshold = 2.4;
-
-    // Reset the environment state
-    reset(env);
-}
-
-void reset(CartPoleEnv *env) {
-    // Randomly initialize state variables in (-0.05, 0.05)
-    env->x = ((double)rand() / RAND_MAX) * 0.1 - 0.05;
-    env->x_dot = ((double)rand() / RAND_MAX) * 0.1 - 0.05;
-    env->theta = ((double)rand() / RAND_MAX) * 0.1 - 0.05;
-    env->theta_dot = ((double)rand() / RAND_MAX) * 0.1 - 0.05;
-
-    env->steps_beyond_terminated = -1;
-}
-
-int step(CartPoleEnv *env, int action, double *reward) {
-    // Validate action
-    if (action != 0 && action != 1) {
-        printf("Invalid action: %d\n", action);
-        return -1;
+CartPoleEnvBatch* create_env_batch(size_t num_envs) {
+    CartPoleEnvBatch *batch = (CartPoleEnvBatch *)malloc(sizeof(CartPoleEnvBatch));
+    if (!batch) {
+        return NULL;
     }
 
-    // Unpack state variables
-    double x = env->x;
-    double x_dot = env->x_dot;
-    double theta = env->theta;
-    double theta_dot = env->theta_dot;
+    // Initialize environment parameters
+    batch->gravity = 9.8;
+    batch->mass_cart = 1.0;
+    batch->mass_pole = 0.1;
+    batch->total_mass = batch->mass_pole + batch->mass_cart;
+    batch->length = 0.5; // Half the pole's length
+    batch->polemass_length = batch->mass_pole * batch->length;
+    batch->force_mag = 10.0;
+    batch->tau = 0.02; // Time interval for updates
+    batch->theta_threshold_radians = 12 * 2 * M_PI / 360;
+    batch->x_threshold = 2.4;
 
-    // Determine force based on action
-    double force = action == 1 ? env->force_mag : -env->force_mag;
-    double costheta = cos(theta);
-    double sintheta = sin(theta);
-
-    // Compute acceleration
-    double temp = (force + env->polemass_length * theta_dot * theta_dot * sintheta) / env->total_mass;
-    double thetaacc = (env->gravity * sintheta - costheta * temp) /
-                      (env->length * (4.0 / 3.0 - env->mass_pole * costheta * costheta / env->total_mass));
-    double xacc = temp - env->polemass_length * thetaacc * costheta / env->total_mass;
-
-    // Update state variables
-    x += env->tau * x_dot;
-    x_dot += env->tau * xacc;
-    theta += env->tau * theta_dot;
-    theta_dot += env->tau * thetaacc;
-
-    env->x = x;
-    env->x_dot = x_dot;
-    env->theta = theta;
-    env->theta_dot = theta_dot;
-
-    // Check if terminated
-    int terminated = x < -env->x_threshold || x > env->x_threshold ||
-                     theta < -env->theta_threshold_radians || theta > env->theta_threshold_radians;
-
-    // Set reward
-    if (!terminated) {
-        *reward = 1.0;
-    } else if (env->steps_beyond_terminated == -1) {
-        // Pole just fell
-        env->steps_beyond_terminated = 0;
-        *reward = 1.0;
-    } else {
-        if (env->steps_beyond_terminated == 0) {
-            printf("Warning: Step called after termination. Reset environment.\n");
-        }
-        env->steps_beyond_terminated++;
-        *reward = 0.0;
-    }
-
-    return terminated;
-}
-
-void initialize_envs(CartPoleEnvBatch *batch, int num_envs) {
-    if (num_envs > MAX_ENVIRONMENTS) {
-        num_envs = MAX_ENVIRONMENTS;
-    }
+    // Allocate arrays for state variables
     batch->num_envs = num_envs;
-    batch->envs = (CartPoleEnv *)malloc(sizeof(CartPoleEnv) * num_envs);
-    for (int i = 0; i < num_envs; i++) {
-        initialize(&batch->envs[i]);
+    batch->x = (double *)malloc(sizeof(double) * num_envs);
+    batch->x_dot = (double *)malloc(sizeof(double) * num_envs);
+    batch->theta = (double *)malloc(sizeof(double) * num_envs);
+    batch->theta_dot = (double *)malloc(sizeof(double) * num_envs);
+    batch->done = (int *)malloc(sizeof(int) * num_envs);
+
+    if (!batch->x || !batch->x_dot || !batch->theta || !batch->theta_dot || !batch->done) {
+        free_env_batch(batch);
+        return NULL;
+    }
+
+    // Initialize done flags
+    memset(batch->done, 0, sizeof(int) * num_envs);
+
+    return batch;
+}
+
+void free_env_batch(CartPoleEnvBatch *batch) {
+    if (batch) {
+        free(batch->x);
+        free(batch->x_dot);
+        free(batch->theta);
+        free(batch->theta_dot);
+        free(batch->done);
+        free(batch);
     }
 }
 
-void reset_envs(CartPoleEnvBatch *batch, int *reset_indices, int num_resets) {
-    for (int i = 0; i < num_resets; i++) {
-        int idx = reset_indices[i];
-        if (idx >= 0 && idx < batch->num_envs) {
-            reset(&batch->envs[idx]);
+void reset_env_batch(CartPoleEnvBatch *batch) {
+    for (size_t i = 0; i < batch->num_envs; i++) {
+        // Randomly initialize state variables in (-0.05, 0.05)
+        batch->x[i] = ((double)rand() / RAND_MAX) * 0.1 - 0.05;
+        batch->x_dot[i] = ((double)rand() / RAND_MAX) * 0.1 - 0.05;
+        batch->theta[i] = ((double)rand() / RAND_MAX) * 0.1 - 0.05;
+        batch->theta_dot[i] = ((double)rand() / RAND_MAX) * 0.1 - 0.05;
+        batch->done[i] = 0;
+    }
+}
+void step_env_batch(CartPoleEnvBatch *batch, int *actions, double *rewards) {
+    size_t num_envs = batch->num_envs;
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < num_envs; i++) {
+        if (batch->done[i]) {
+            rewards[i] = 0.0;
+            continue;
         }
-    }
-}
 
+        // Unpack state variables
+        double x = batch->x[i];
+        double x_dot = batch->x_dot[i];
+        double theta = batch->theta[i];
+        double theta_dot = batch->theta_dot[i];
 
-void step_envs(CartPoleEnvBatch *batch, int *actions, double *rewards, int *dones) {
-    for (int i = 0; i < batch->num_envs; i++) {
-        double reward = 0.0;
-        int done = step(&batch->envs[i], actions[i], &reward);
-        rewards[i] = reward;
-        dones[i] = done;
-    }
-}
+        // Validate action
+        int action = actions[i];
+        if (action != 0 && action != 1) {
+            // printf("Invalid action: %d\n", action);
+            batch->done[i] = 1;
+            rewards[i] = 0.0;
+            continue;
+        }
 
-void free_envs(CartPoleEnvBatch *batch) {
-    if (batch->envs != NULL) {
-        free(batch->envs);
-        batch->envs = NULL;
+        // Determine force based on action
+        double force = action == 1 ? batch->force_mag : -batch->force_mag;
+        double costheta = cos(theta);
+        double sintheta = sin(theta);
+
+        // Compute acceleration
+        double temp = (force + batch->polemass_length * theta_dot * theta_dot * sintheta) / batch->total_mass;
+        double thetaacc = (batch->gravity * sintheta - costheta * temp) /
+                          (batch->length * (4.0 / 3.0 - batch->mass_pole * costheta * costheta / batch->total_mass));
+        double xacc = temp - batch->polemass_length * thetaacc * costheta / batch->total_mass;
+
+        // Update state variables
+        x += batch->tau * x_dot;
+        x_dot += batch->tau * xacc;
+        theta += batch->tau * theta_dot;
+        theta_dot += batch->tau * thetaacc;
+
+        batch->x[i] = x;
+        batch->x_dot[i] = x_dot;
+        batch->theta[i] = theta;
+        batch->theta_dot[i] = theta_dot;
+
+        // Check if terminated
+        int done = x < -batch->x_threshold || x > batch->x_threshold ||
+                   theta < -batch->theta_threshold_radians || theta > batch->theta_threshold_radians;
+
+        batch->done[i] = done;
+
+        // Set reward
+        rewards[i] = done ? 0.0 : 1.0;
     }
 }

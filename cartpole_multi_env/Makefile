@@ -1,6 +1,6 @@
 .Phony: build_c build_py
 build_c:
-	gcc -o cartpole main.c cartpole.c agent.c -lm
+	gcc -fopenmp -o cartpole main.c cartpole.c agent.c -lm 
 
 build_py:
 	python setup.py build

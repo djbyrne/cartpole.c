@@ -7,78 +7,43 @@
 
 typedef struct {
     PyObject_HEAD
-    CartPoleEnv env;
-} PyCartPoleObject;
-
-typedef struct {
-    PyObject_HEAD
-    CartPoleEnvBatch batch;
+    CartPoleEnvBatch *batch;
 } PyCartPoleBatchObject;
 
 static int PyCartPoleBatch_init(PyCartPoleBatchObject *self, PyObject *args, PyObject *kwds) {
-    int num_envs = 1;
+    size_t num_envs = 1;
     static char *kwlist[] = {"num_envs", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|i", kwlist, &num_envs)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|n", kwlist, &num_envs)) {
         return -1;
     }
-    initialize_envs(&self->batch, num_envs);
+    self->batch = create_env_batch(num_envs);
+    if (!self->batch) {
+        PyErr_SetString(PyExc_MemoryError, "Failed to create environment batch");
+        return -1;
+    }
     return 0;
 }
 
 static void PyCartPoleBatch_dealloc(PyCartPoleBatchObject *self) {
-    free_envs(&self->batch);
+    free_env_batch(self->batch);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
+static PyObject *PyCartPoleBatch_reset(PyCartPoleBatchObject *self, PyObject *Py_UNUSED(ignored)) {
+    reset_env_batch(self->batch);
 
-static PyObject *PyCartPoleBatch_reset(PyCartPoleBatchObject *self, PyObject *args) {
-    PyObject *reset_indices_obj = NULL;
-    if (!PyArg_ParseTuple(args, "|O", &reset_indices_obj)) {
-        return NULL;
-    }
-
-    int num_resets = self->batch.num_envs;
-    int *reset_indices = NULL;
-
-    if (reset_indices_obj && reset_indices_obj != Py_None) {
-        if (!PyList_Check(reset_indices_obj)) {
-            PyErr_SetString(PyExc_TypeError, "Expected a list of indices to reset");
-            return NULL;
-        }
-        num_resets = (int)PyList_Size(reset_indices_obj);
-        reset_indices = (int *)malloc(sizeof(int) * num_resets);
-        for (int i = 0; i < num_resets; i++) {
-            PyObject *item = PyList_GetItem(reset_indices_obj, i);
-            if (!PyLong_Check(item)) {
-                free(reset_indices);
-                PyErr_SetString(PyExc_TypeError, "Indices must be integers");
-                return NULL;
-            }
-            reset_indices[i] = (int)PyLong_AsLong(item);
-        }
-    } else {
-        // Reset all environments if no indices provided
-        num_resets = self->batch.num_envs;
-        reset_indices = (int *)malloc(sizeof(int) * num_resets);
-        for (int i = 0; i < num_resets; i++) {
-            reset_indices[i] = i;
-        }
-    }
-
-    // Call the reset function with the indices
-    reset_envs(&self->batch, reset_indices, num_resets);
-
-    free(reset_indices);
-
-    // Build a list of states for the reset environments
-    PyObject *state_list = PyList_New(num_resets);
-    for (int i = 0; i < num_resets; i++) {
-        int idx = reset_indices[i];
-        CartPoleEnv *env = &self->batch.envs[idx];
-        PyObject *state = Py_BuildValue("(dddd)", env->x, env->x_dot, env->theta, env->theta_dot);
+    // Build a list of states
+    PyObject *state_list = PyList_New(self->batch->num_envs);
+    for (size_t i = 0; i < self->batch->num_envs; i++) {
+        PyObject *state = Py_BuildValue(
+            "(dddd)",
+            self->batch->x[i],
+            self->batch->x_dot[i],
+            self->batch->theta[i],
+            self->batch->theta_dot[i]
+        );
         PyList_SET_ITEM(state_list, i, state);
     }
-
     return state_list;
 }
 
@@ -94,50 +59,61 @@ static PyObject *PyCartPoleBatch_step(PyCartPoleBatchObject *self, PyObject *arg
     }
 
     Py_ssize_t num_actions = PyList_Size(action_list);
-    if (num_actions != self->batch.num_envs) {
+    if ((size_t)num_actions != self->batch->num_envs) {
         PyErr_SetString(PyExc_ValueError, "Number of actions must match number of environments");
         return NULL;
     }
 
-    int *actions = (int *)malloc(sizeof(int) * self->batch.num_envs);
-    double *rewards = (double *)malloc(sizeof(double) * self->batch.num_envs);
-    int *dones = (int *)malloc(sizeof(int) * self->batch.num_envs);
+    int *actions = (int *)malloc(sizeof(int) * self->batch->num_envs);
+    double *rewards = (double *)malloc(sizeof(double) * self->batch->num_envs);
 
-    for (int i = 0; i < self->batch.num_envs; i++) {
+    if (!actions || !rewards) {
+        PyErr_SetString(PyExc_MemoryError, "Failed to allocate memory");
+        free(actions);
+        free(rewards);
+        return NULL;
+    }
+
+    for (size_t i = 0; i < self->batch->num_envs; i++) {
         PyObject *item = PyList_GetItem(action_list, i);
         if (!PyLong_Check(item)) {
-            free(actions); free(rewards); free(dones);
+            free(actions);
+            free(rewards);
             PyErr_SetString(PyExc_TypeError, "Actions must be integers");
             return NULL;
         }
         actions[i] = (int)PyLong_AsLong(item);
     }
 
-    // Step the environments
-    step_envs(&self->batch, actions, rewards, dones);
+    // Call the step function
+    step_env_batch(self->batch, actions, rewards);
 
     // Build the results
-    PyObject *state_list = PyList_New(self->batch.num_envs);
-    PyObject *reward_list = PyList_New(self->batch.num_envs);
-    PyObject *done_list = PyList_New(self->batch.num_envs);
+    PyObject *state_list = PyList_New(self->batch->num_envs);
+    PyObject *reward_list = PyList_New(self->batch->num_envs);
+    PyObject *done_list = PyList_New(self->batch->num_envs);
 
-    for (int i = 0; i < self->batch.num_envs; i++) {
-        CartPoleEnv *env = &self->batch.envs[i];
-        PyObject *state = Py_BuildValue("(dddd)", env->x, env->x_dot, env->theta, env->theta_dot);
+    for (size_t i = 0; i < self->batch->num_envs; i++) {
+        PyObject *state = Py_BuildValue(
+            "(dddd)",
+            self->batch->x[i],
+            self->batch->x_dot[i],
+            self->batch->theta[i],
+            self->batch->theta_dot[i]
+        );
         PyList_SET_ITEM(state_list, i, state);
         PyList_SET_ITEM(reward_list, i, PyFloat_FromDouble(rewards[i]));
-        PyList_SET_ITEM(done_list, i, PyBool_FromLong(dones[i]));
+        PyList_SET_ITEM(done_list, i, PyBool_FromLong(self->batch->done[i]));
     }
 
     free(actions);
     free(rewards);
-    free(dones);
 
     return Py_BuildValue("(OOO)", state_list, reward_list, done_list);
 }
 
 static PyMethodDef PyCartPoleBatch_methods[] = {
-    {"reset", (PyCFunction)PyCartPoleBatch_reset, METH_VARARGS, "Reset environments by indices"},
+    {"reset", (PyCFunction)PyCartPoleBatch_reset, METH_NOARGS, "Reset all environments"},
     {"step", (PyCFunction)PyCartPoleBatch_step, METH_VARARGS, "Step all environments with a list of actions"},
     {NULL}  /* Sentinel */
 };
