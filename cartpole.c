@@ -93,3 +93,9 @@ int step(CartPoleEnv *env, int action, double *reward) {
 
     return terminated;
 }
+
+// Main function
+
+int main() {
+    return 0;
+}
