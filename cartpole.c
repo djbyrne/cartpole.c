@@ -3,7 +3,6 @@
 #include <math.h>
 #include "cartpole.h"
 
-// No includes of agent.h or references to agent_policy
 
 #define MAX_STEPS 500 // Maximum steps per episode
 
