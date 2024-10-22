@@ -1,6 +1,6 @@
 .Phony: build_c build_py clean install
 build_c:
-	gcc -o cartpole cartpole.c agent.c -lm
+	gcc -o cartpole.exe cartpole.c -lm
 
 build_py:
 	python setup.py build

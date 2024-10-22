@@ -109,7 +109,7 @@ StepResult step(CartPoleEnv *env, int action) {
     result.terminated = terminated;
     result.truncated = truncated;
     //add info dictionary here, cant be NULL
-    result.info = 
+    result.info = malloc(sizeof(int));
 
     return result;
 }
